@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coupon Collector — Markov Chain</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:    #050612;
+  --surf:   #0E1026;
+  --yellow: #FFE135;
+  --blue:   #4B64C7;
+  --text:   #EEF0FA;
+  --muted:  #7B849E;
+  --g0: #22C55E;
+  --g1: #4ADE80;
+  --g2: #A3E635;
+  --g3: #FB923C;
+  --g4: #EF4444;
+  --rad: 12px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; width: 100%; overflow: hidden; }
+
+body {
+  background: radial-gradient(ellipse 80% 60% at 50% 25%, #12173A 0%, var(--ink) 70%);
+  color: var(--text);
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* ── STARFIELD ── */
+#bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .55;
+}
+
+/* ── APP SHELL (16:9 Dell Laptop Friendly) ── */
+#app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+#stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vh, 22px) clamp(16px, 3vw, 36px);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── BOTTOM NAV ── */
+#nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 24px 12px;
+  background: rgba(5,6,18,.72);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255,225,53,.12);
+  flex-shrink: 0;
+  transition: opacity .25s ease, transform .25s ease;
+}
+body.hide-ui #nav {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+}
+
+#step-info { min-width: 64px; }
+#step-info strong { font-size: 15px; color: var(--yellow); font-weight: 900; }
+#step-info span   { font-size: 12px; color: var(--muted); }
+
+#track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+#fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--yellow));
+  border-radius: 999px;
+  transition: width .4s cubic-bezier(.4,0,.2,1);
+  width: 0%;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, background .15s;
+  flex-shrink: 0;
+}
+#prev {
+  padding: 9px 14px;
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  font-size: 13px;
+}
+#prev:hover { background: rgba(255,255,255,.14); }
+#prev:disabled { opacity: .28; cursor: default; }
+
+#next {
+  padding: 9px 22px;
+  background: var(--yellow);
+  color: #050612;
+  font-size: 14px;
+  box-shadow: 0 0 22px rgba(255,225,53,.32);
+}
+#next:hover  { transform: scale(1.05); box-shadow: 0 0 34px rgba(255,225,53,.6); }
+#next:active { transform: scale(.96); }
+
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .04em;
+  display: none;
+}
+@media (min-width: 820px) { .hint { display: inline; } }
+
+/* ── SCENE CONTAINER ── */
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 2.2vh, 22px);
+  width: 100%;
+  max-width: 1020px;
+  animation: scIn .36s cubic-bezier(.25,.46,.45,.94) both;
+}
+@keyframes scIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes scOut { to   { opacity:0; transform:translateY(-8px); } }
+.exit { animation: scOut .2s ease forwards; }
+
+/* ── TYPOGRAPHY ── */
+.pixel {
+  font-family: 'Press Start 2P', monospace;
+  line-height: 1.7;
+  text-align: center;
+}
+.heading {
+  font-size: clamp(22px, 3.4vw, 38px);
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.18;
+  letter-spacing: -.01em;
+}
+.sub-short {
+  font-size: clamp(14px, 1.8vw, 19px);
+  color: rgba(238,240,250,.72);
+  text-align: center;
+  font-weight: 800;
+}
+.hl        { color: var(--yellow); }
+.hl-green  { color: var(--g0); }
+.hl-orange { color: var(--g3); }
+.hl-red    { color: var(--g4); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 15px;
+  border-radius: 999px;
+  font-size: clamp(10px, 1.2vw, 12px);
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pill-blue   { background: rgba(75,100,199,.22); border: 1px solid rgba(75,100,199,.6); color: #A8BCFF; }
+.pill-yellow { background: rgba(255,225,53,.12); border: 1px solid rgba(255,225,53,.45); color: var(--yellow); }
+.pill-red    { background: rgba(239,68,68,.14);  border: 1px solid rgba(239,68,68,.5);  color: #FCA5A5; }
+.pill-green  { background: rgba(34,197,94,.14);  border: 1px solid rgba(34,197,94,.5);  color: #86EFAC; }
+
+.chip-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.chip {
+  background: rgba(14,16,38,.85);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: clamp(13px, 1.5vw, 16px);
+  font-weight: 900;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── POKEMON CARDS (Responsive to BOTH width & height) ── */
+.card-row {
+  display: flex;
+  gap: clamp(8px, 1.5vw, 18px);
+  justify-content: center;
+  flex-wrap: nowrap;
+}
+.cw {
+  width: clamp(92px, min(14vw, 24vh), 156px);
+  aspect-ratio: 5 / 7;
+  perspective: 900px;
+  flex-shrink: 0;
+}
+.ci {
+  width: 100%; height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform .65s cubic-bezier(.4,0,.2,1);
+}
+.cw.bob .ci { animation: bob 3.2s ease-in-out infinite; }
+.cw.bob:nth-child(2) .ci { animation-delay: .4s; }
+.cw.bob:nth-child(3) .ci { animation-delay: .8s; }
+.cw.bob:nth-child(4) .ci { animation-delay: 1.2s; }
+.cw.bob:nth-child(5) .ci { animation-delay: 1.6s; }
+@keyframes bob {
+  0%,100% { transform: translateY(0) rotateY(180deg); }
+  50%     { transform: translateY(-9px) rotateY(180deg); }
+}
+.cw.flipped .ci { transform: rotateY(180deg); }
+
+.cf, .cb {
+  position: absolute; inset: 0;
+  border-radius: var(--rad);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.cb {
+  background: linear-gradient(145deg,#1d2154 0%,#090a22 100%);
+  border: 2.5px solid var(--blue);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.cf {
+  transform: rotateY(180deg);
+  display: flex; flex-direction: column;
+  border: 2.5px solid transparent;
+  overflow: hidden;
+}
+.cf.electric { background:linear-gradient(155deg,#F7D02C,#D47A00); border-color:#FFE573; box-shadow:0 0 22px rgba(247,208,44,.42); }
+.cf.fire     { background:linear-gradient(155deg,#F08030,#B02000); border-color:#FF6030; box-shadow:0 0 22px rgba(240,128,48,.42); }
+.cf.psychic  { background:linear-gradient(155deg,#F85888,#780060); border-color:#E040FB; box-shadow:0 0 22px rgba(248,88,136,.42); }
+.cf.ghost    { background:linear-gradient(155deg,#705898,#200040); border-color:#9C27B0; box-shadow:0 0 22px rgba(112,88,152,.42); }
+.cf.normal   { background:linear-gradient(155deg,#A8A878,#4A4A30); border-color:#C8C890; box-shadow:0 0 20px rgba(168,168,120,.32); }
+
+.c-header { display:flex; justify-content:space-between; align-items:flex-start; padding:6px 8px 2px; }
+.c-name   { color:rgba(0,0,0,.85); font-size:clamp(9px, 1.1vw, 12px); font-weight:900; }
+.c-hp     { color:rgba(0,0,0,.72); font-size:8px; text-align:right; line-height:1; }
+.c-hp span { font-size:clamp(11px, 1.3vw, 15px); font-weight:900; display:block; }
+
+.c-art {
+  flex: 1; margin: 2px 6px;
+  background: rgba(255,255,255,.2);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.c-art img {
+  max-width: 86%; max-height: 86%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.5));
+}
+.c-foot {
+  padding: 3px 6px 6px;
+  font-size: clamp(8px, .9vw, 10px);
+  font-weight: 900;
+  color: rgba(0,0,0,.62);
+  text-align: center;
+}
+
+/* ── BOOSTER PACK ── */
+.pack-stage {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 4vw, 48px);
+}
+.pack {
+  width: clamp(96px, 14vh, 126px);
+  aspect-ratio: 5 / 8;
+  border-radius: 10px;
+  background: linear-gradient(155deg, var(--blue) 0%, #10026B 52%, #CC0018 100%);
+  border: 2.5px solid var(--yellow);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  animation: packGlow 2.1s ease-in-out infinite;
+  position: relative;
+}
+.pack-tag {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--yellow);
+  letter-spacing: .08em;
+}
+@keyframes packGlow {
+  0%,100% { box-shadow: 0 0 24px rgba(255,225,53,.28), 0 18px 40px rgba(0,0,0,.55); transform: translateY(0); }
+  50%     { box-shadow: 0 0 54px rgba(255,225,53,.65), 0 24px 48px rgba(0,0,0,.55); transform: translateY(-6px); }
+}
+
+/* ── GUESS BUTTONS ── */
+.g-row { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+.gbtn {
+  padding: 14px 32px;
+  border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900; font-size: clamp(16px, 2vw, 20px);
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s;
+}
+.gbtn:hover  { border-color: var(--yellow); background: rgba(255,225,53,.14); transform: scale(1.06); }
+.gbtn.chosen { border-color: var(--yellow); background: rgba(255,225,53,.24); box-shadow: 0 0 24px rgba(255,225,53,.35); }
+.gbtn.wrong  { border-color: rgba(239,68,68,.55); background: rgba(239,68,68,.1); animation: shake .34s ease; }
+@keyframes shake { 0%,100%{ transform:translateX(0); } 30%{ transform:translateX(-7px); } 70%{ transform:translateX(7px); } }
+
+/* ── COUNTER & COMPARISON BAR ── */
+.counter-box { text-align: center; }
+.counter {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(46px, min(10vw, 13vh), 92px);
+  color: var(--yellow);
+  text-shadow: 0 0 52px rgba(255,225,53,.65);
+  line-height: 1.05;
+}
+.counter-label {
+  font-size: 12px; color: var(--muted);
+  letter-spacing: .2em; margin-top: 8px;
+  font-weight: 900; text-transform: uppercase;
+}
+.compare-bars {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cbar-row { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 900; }
+.cbar-lbl { width: 110px; text-align: right; color: var(--muted); }
+.cbar-track { flex: 1; height: 18px; background: rgba(255,255,255,.06); border-radius: 999px; overflow: hidden; }
+.cbar-fill { height: 100%; border-radius: 999px; animation: growBar 1.1s .4s cubic-bezier(.22,1,.36,1) both; transform-origin: left; }
+@keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* ── MARKOV SVG WRAPPER ── */
+#markov-wrap {
+  width: 100%;
+  max-width: 900px;
+  display: flex;
+  justify-content: center;
+}
+#markov-wrap svg {
+  width: 100%;
+  max-height: 36vh;
+  height: auto;
+  overflow: visible;
+}
+
+/* ── MINI DECK TRACKER (Visual replacement for text paragraphs) ── */
+.mini-deck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(14,16,38,.75);
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 14px;
+  padding: 8px 16px;
+}
+.mini-slot {
+  width: clamp(36px, 5.5vh, 48px);
+  height: clamp(36px, 5.5vh, 48px);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.mini-slot.owned {
+  background: rgba(34,197,94,.16);
+  border: 2px solid var(--g0);
+  box-shadow: 0 0 12px rgba(34,197,94,.28);
+}
+.mini-slot.missing {
+  background: rgba(255,255,255,.03);
+  border: 2px dashed rgba(255,255,255,.22);
+  color: var(--muted);
+  font-weight: 900;
+  font-size: 16px;
+}
+.mini-slot img { width: 82%; height: 82%; object-fit: contain; }
+
+/* ── PROBABILITY SPLIT BAR ── */
+.prob-bar-wrap {
+  width: 100%;
+  max-width: 580px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.prob-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(12px, 1.4vw, 15px);
+  font-weight: 900;
+}
+.prob-bar {
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+}
+.prob-new {
+  background: linear-gradient(90deg, #16A34A, #4ADE80);
+  transition: width .6s cubic-bezier(.22,1,.36,1);
+}
+.prob-dup {
+  background: linear-gradient(90deg, #F97316, #EF4444);
+  transition: width .6s cubic-bezier(.22,1,.36,1);
+}
+
+/* ── MARKOV PROPERTY VISUAL ── */
+.mp-visual {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.mp-box {
+  padding: 12px 20px;
+  border-radius: 14px;
+  font-size: clamp(13px, 1.5vw, 16px);
+  font-weight: 900;
+  display: flex; align-items: center; gap: 10px;
+}
+.mp-past {
+  background: rgba(255,255,255,.03);
+  border: 1.5px dashed rgba(255,255,255,.2);
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.mp-now {
+  background: rgba(255,225,53,.14);
+  border: 2px solid var(--yellow);
+  color: var(--yellow);
+  box-shadow: 0 0 24px rgba(255,225,53,.28);
+}
+
+/* ── FORMULA & VIDEO 2 CARD ── */
+.formula {
+  background: rgba(255,225,53,.09);
+  border: 1.5px solid rgba(255,225,53,.35);
+  border-radius: 14px;
+  padding: 14px 28px;
+  font-size: clamp(15px, 2.2vw, 22px);
+  font-weight: 900;
+  color: var(--yellow);
+  text-align: center;
+}
+.v2card {
+  background: linear-gradient(145deg, #101A4D 0%, #070C29 100%);
+  border: 1.5px solid rgba(75,100,199,.65);
+  border-radius: 18px;
+  padding: 20px 32px;
+  text-align: center;
+  box-shadow: 0 0 46px rgba(75,100,199,.25);
+}
+.v2-eye   { font-size: 11px; color: #93A8F4; letter-spacing: .16em; margin-bottom: 6px; font-weight: 900; text-transform: uppercase; }
+.v2-title { font-size: clamp(17px, 2vw, 22px); font-weight: 900; color: var(--text); }
+
+/* ── ANIMATIONS ── */
+@keyframes popIn {
+  from { opacity:0; transform:translateY(14px) scale(.92); }
+  to   { opacity:1; transform:none; }
+}
+.stagger > * { opacity:0; animation:popIn .4s cubic-bezier(.34,1.56,.64,1) forwards; }
+.stagger > *:nth-child(1){ animation-delay:.05s; }
+.stagger > *:nth-child(2){ animation-delay:.14s; }
+.stagger > *:nth-child(3){ animation-delay:.23s; }
+.stagger > *:nth-child(4){ animation-delay:.32s; }
+.stagger > *:nth-child(5){ animation-delay:.41s; }
+
+.a1{ animation:popIn .38s .04s cubic-bezier(.34,1.56,.64,1) both; }
+.a2{ animation:popIn .38s .14s cubic-bezier(.34,1.56,.64,1) both; }
+.a3{ animation:popIn .38s .24s cubic-bezier(.34,1.56,.64,1) both; }
+.a4{ animation:popIn .38s .34s cubic-bezier(.34,1.56,.64,1) both; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="app">
+  <div id="stage"></div>
+  <div id="nav">
+    <div id="step-info">
+      <strong id="snum">1</strong> <span>/ 15</span>
+    </div>
+    <div id="track"><div id="fill"></div></div>
+    <span class="hint">← → or Space &bull; H hides bar</span>
+    <button id="prev" class="nav-btn">← BACK</button>
+    <button id="next" class="nav-btn">NEXT →</button>
+  </div>
+</div>
+
+<script>
+/* ── STARFIELD ── */
+(function () {
+  const cv = document.getElementById('bg');
+  const cx = cv.getContext('2d');
+  let stars = [];
+  function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+  function init() {
+    stars = Array.from({ length: 180 }, () => ({
+      x: Math.random() * cv.width, y: Math.random() * cv.height,
+      r: Math.random() * 1.4 + .3, a: Math.random() * .6 + .18,
+      ph: Math.random() * Math.PI * 2, sp: Math.random() * .012 + .004
+    }));
+  }
+  function draw() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    stars.forEach(s => {
+      s.ph += s.sp;
+      const a = s.a * (.55 + .45 * Math.sin(s.ph));
+      cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      cx.fillStyle = `rgba(255,255,255,${a})`; cx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize(); init(); draw();
+  window.addEventListener('resize', () => { resize(); init(); });
+})();
+
+/* ── CARD DATA ── */
+const CARDS = [
+  { name: 'Pikachu',   type: 'electric', label: 'Lightning', hp: 60,  pid: 25,  icon: '⚡' },
+  { name: 'Charizard', type: 'fire',     label: 'Fire',      hp: 150, pid: 6,   icon: '🔥' },
+  { name: 'Mewtwo',    type: 'psychic',  label: 'Psychic',   hp: 120, pid: 150, icon: '✨' },
+  { name: 'Gengar',    type: 'ghost',    label: 'Ghost',     hp: 90,  pid: 94,  icon: '👻' },
+  { name: 'Snorlax',   type: 'normal',   label: 'Normal',    hp: 160, pid: 143, icon: '😴' },
+];
+const ART = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+
+function pokeballSVG(size = 48) {
+  return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="24" cy="24" r="22" stroke="#FFCB05" stroke-width="2.2"/>
+    <line x1="2" y1="24" x2="46" y2="24" stroke="#FFCB05" stroke-width="2.2"/>
+    <path d="M24 2 A22 22 0 0 1 46 24 L30 24 A6 6 0 0 0 18 24 L2 24 A22 22 0 0 1 24 2Z" fill="rgba(220,0,0,.38)"/>
+    <circle cx="24" cy="24" r="6" stroke="#FFCB05" stroke-width="2.2" fill="rgba(5,6,18,.9)"/>
+    <circle cx="24" cy="24" r="2.5" fill="#FFCB05"/>
+  </svg>`;
+}
+
+function mkCard(c, flipped, bob) {
+  return `<div class="cw${flipped ? ' flipped' : ''}${bob ? ' bob' : ''}"><div class="ci">
+    <div class="cb">${pokeballSVG(46)}</div>
+    <div class="cf ${c.type}">
+      <div class="c-header">
+        <span class="c-name">${c.name}</span>
+        <span class="c-hp"><span>${c.hp}</span>HP</span>
+      </div>
+      <div class="c-art"><img src="${ART}${c.pid}.png" alt="${c.name}"></div>
+      <div class="c-foot">${c.icon} ${c.label}</div>
+    </div>
+  </div></div>`;
+}
+
+function miniDeck(owned) {
+  return `<div class="mini-deck a2">
+    ${CARDS.map((c, i) => i < owned
+      ? `<div class="mini-slot owned"><img src="${ART}${c.pid}.png" alt="${c.name}"></div>`
+      : `<div class="mini-slot missing">?</div>`
+    ).join('')}
+  </div>`;
+}
+
+function probBar(newPct, dupPct) {
+  return `<div class="prob-bar-wrap a3">
+    <div class="prob-labels">
+      <span class="hl-green">NEW CARD: ${newPct}%</span>
+      <span class="${dupPct >= 60 ? 'hl-red' : 'hl-orange'}">DUPLICATE: ${dupPct}%</span>
+    </div>
+    <div class="prob-bar">
+      <div class="prob-new" style="width:${newPct}%"></div>
+      <div class="prob-dup" style="width:${dupPct}%"></div>
+    </div>
+  </div>`;
+}
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function animCount(el, from, to, ms, dec) {
+  const t0 = performance.now();
+  (function tick(now) {
+    const p = Math.min((now - t0) / ms, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = (from + (to - from) * e).toFixed(dec);
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+/* ── MARKOV CHAIN SVG ── */
+const SX = [65, 195, 325, 455, 585, 715];
+const SY = 152;
+const SR = 32;
+const FWD  = ['#22C55E', '#4ADE80', '#A3E635', '#FB923C', '#EF4444'];
+const LOOP = ['#FCD34D', '#FB923C', '#F97316', '#EF4444'];
+const FIRST = { s01: 9, s12: 10, l1: 10, s23: 13, l2: 13, s34: 11, l3: 11, s45: 12, l4: 12 };
+
+function fwdArrow(from, label, color, isNew) {
+  const x1 = SX[from] + SR + 6;
+  const x2 = SX[from + 1] - SR - 6;
+  const len = x2 - x1;
+  const mx = (x1 + x2) / 2;
+  const lid = `ma${from}`;
+  const lineStyle = isNew ? `stroke-dasharray:${len};stroke-dashoffset:${len};animation:dl .55s ease forwards;` : '';
+  const lblStyle  = isNew ? `opacity:0;animation:lbShow .28s .5s ease forwards;` : `opacity:1;`;
+  return `
+    <defs><marker id="${lid}" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+      <polygon points="0,0 8,3.5 0,7" fill="${color}"/>
+    </marker></defs>
+    <line x1="${x1}" y1="${SY}" x2="${x2}" y2="${SY}" stroke="${color}" stroke-width="3" stroke-linecap="round"
+          marker-end="url(#${lid})" style="${lineStyle}"/>
+    <rect x="${mx - 34}" y="${SY - 29}" width="68" height="20" rx="5" fill="rgba(5,6,18,.88)" style="${lblStyle}"/>
+    <text x="${mx}" y="${SY - 15}" font-family="Nunito,sans-serif" font-weight="900" font-size="12.5"
+          fill="${color}" text-anchor="middle" style="${lblStyle}">${label}</text>`;
+}
+
+function selfLoop(stateIdx, label, color, isNew) {
+  const cx2 = SX[stateIdx];
+  const topY = SY - SR - 64;
+  const lx = cx2 - 24, rx = cx2 + 24, sy = SY - SR - 2;
+  const lid = `sl${stateIdx}`;
+  const pathStyle = isNew ? `stroke-dasharray:170;stroke-dashoffset:170;animation:dl .6s .25s ease forwards;` : '';
+  const lblStyle  = isNew ? `opacity:0;animation:lbShow .28s .8s ease forwards;` : `opacity:1;`;
+  return `
+    <defs><marker id="${lid}" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+      <polygon points="0,0 8,3.5 0,7" fill="${color}"/>
+    </marker></defs>
+    <path d="M${lx} ${sy} C${lx} ${topY} ${rx} ${topY} ${rx} ${sy}" fill="none" stroke="${color}" stroke-width="2.4"
+          stroke-linecap="round" marker-end="url(#${lid})" style="${pathStyle}"/>
+    <rect x="${cx2 - 30}" y="${topY - 3}" width="60" height="20" rx="5" fill="rgba(5,6,18,.88)" style="${lblStyle}"/>
+    <text x="${cx2}" y="${topY + 11}" font-family="Nunito,sans-serif" font-weight="900" font-size="12"
+          fill="${color}" text-anchor="middle" style="${lblStyle}">${label}</text>`;
+}
+
+function buildMarkov(step, activeNode = -1) {
+  let arrows = '';
+  const add = (key, from, label, color, type) => {
+    if (step >= FIRST[key]) {
+      const isNew = FIRST[key] === step;
+      arrows += type === 'loop' ? selfLoop(from, label, color, isNew) : fwdArrow(from, label, color, isNew);
+    }
+  };
+  add('s01', 0, '100%', FWD[0], 'fwd');
+  add('s12', 1, '80%',  FWD[1], 'fwd');
+  add('l1',  1, '20%',  LOOP[0], 'loop');
+  add('s23', 2, '60%',  FWD[2], 'fwd');
+  add('l2',  2, '40%',  LOOP[1], 'loop');
+  add('s34', 3, '40%',  FWD[3], 'fwd');
+  add('l3',  3, '60%',  LOOP[2], 'loop');
+  add('s45', 4, '20%',  FWD[4], 'fwd');
+  add('l4',  4, '80%',  LOOP[3], 'loop');
+
+  const circles = SX.map((x, i) => {
+    const isGoal = i === 5;
+    const isHl = i === activeNode;
+    const sc = isHl ? '#FFE135' : (isGoal ? '#4ADE80' : 'rgba(255,255,255,.22)');
+    const fill = isHl ? 'rgba(255,225,53,.14)' : (isGoal ? 'rgba(34,197,94,.12)' : 'rgba(14,16,38,.96)');
+    const sw = (isHl || isGoal) ? 3 : 2;
+    return `<g>
+      ${isHl ? `<circle cx="${x}" cy="${SY}" r="${SR + 11}" fill="none" stroke="rgba(255,225,53,.35)" stroke-width="2" stroke-dasharray="5 4"/>` : ''}
+      <circle cx="${x}" cy="${SY}" r="${SR}" fill="${fill}" stroke="${sc}" stroke-width="${sw}"/>
+      <text x="${x}" y="${SY + 1}" font-family="'Press Start 2P',monospace" font-size="16"
+            fill="${isHl ? '#FFE135' : (isGoal ? '#4ADE80' : 'white')}" text-anchor="middle" dominant-baseline="central">${i}</text>
+      <text x="${x}" y="${SY + SR + 18}" font-family="Nunito,sans-serif" font-size="12" font-weight="800"
+            fill="${isGoal ? '#4ADE80' : 'rgba(238,240,250,.55)'}" text-anchor="middle">${isGoal ? 'GOAL (5/5)' : `State ${i}`}</text>
+    </g>`;
+  }).join('');
+
+  return `<svg viewBox="0 0 780 225" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      @keyframes dl     { to { stroke-dashoffset: 0; } }
+      @keyframes lbShow { from { opacity: 0; } to { opacity: 1; } }
+    </style>
+    ${arrows}${circles}
+  </svg>`;
+}
+
+/* ── STATE & NAVIGATION ── */
+let step = 0;
+const TOTAL = 15;
+const stage = document.getElementById('stage');
+const fill = document.getElementById('fill');
+const snum = document.getElementById('snum');
+const nextBtn = document.getElementById('next');
+const prevBtn = document.getElementById('prev');
+
+async function go(s) {
+  const old = stage.querySelector('.scene');
+  if (old) { old.classList.add('exit'); await wait(190); }
+  stage.innerHTML = '';
+
+  step = s;
+  snum.textContent = step + 1;
+  fill.style.width = `${((step + 1) / TOTAL) * 100}%`;
+  prevBtn.disabled = step === 0;
+  nextBtn.textContent = step === TOTAL - 1 ? 'DONE ✓' : 'NEXT →';
+
+  const div = document.createElement('div');
+  div.className = 'scene';
+
+  /* 0: TITLE */
+  if (step === 0) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">PART 1 &bull; MARKOV CHAINS</div>
+      <div class="pixel a2" style="font-size:clamp(14px,2.4vw,24px);color:var(--yellow);text-shadow:0 0 32px rgba(255,225,53,.5);">
+        COUPON COLLECTOR PROBLEM
+      </div>
+      <div class="card-row stagger">${CARDS.map(c => mkCard(c, true, true)).join('')}</div>`;
+  }
+  /* 1: 5 FACE-DOWN CARDS */
+  else if (step === 1) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">THE SET</div>
+      <h2 class="heading a2"><span class="hl">5 Unique Cards</span> &bull; Equal Odds</h2>
+      <div class="card-row stagger">${CARDS.map(c => mkCard(c, false, false)).join('')}</div>`;
+  }
+  /* 2: FLIP REVEAL */
+  else if (step === 2) {
+    div.innerHTML = `
+      <h2 class="heading a1">Complete the <span class="hl">Full Set</span></h2>
+      <div class="card-row">${CARDS.map(c => mkCard(c, false, false)).join('')}</div>`;
+    stage.appendChild(div);
+    await wait(240);
+    const ws = stage.querySelectorAll('.cw');
+    for (let i = 0; i < ws.length; i++) { await wait(260); ws[i].classList.add('flipped'); }
+    return;
+  }
+  /* 3: THE BOOSTER PACK */
+  else if (step === 3) {
+    div.innerHTML = `
+      <h2 class="heading a1">1 Pack = <span class="hl">1 Random Card</span></h2>
+      <div class="pack-stage a2">
+        <div class="pack">${pokeballSVG(56)}<div class="pack-tag">BOOSTER</div></div>
+        <div class="chip-row" style="flex-direction:column;align-items:flex-start;">
+          <div class="chip"><span class="hl">🎲</span> 1-in-5 Equal Chance</div>
+          <div class="chip"><span class="hl-orange">♻️</span> Duplicates Allowed</div>
+          <div class="chip"><span class="hl-green">⚡</span> Independent Draws</div>
+        </div>
+      </div>`;
+  }
+  /* 4: THE GUESS */
+  else if (step === 4) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">TAKE A GUESS</div>
+      <h2 class="heading a2">How many packs to get <span class="hl">all 5?</span></h2>
+      <div class="g-row a3">
+        <button class="gbtn" onclick="doGuess(this)">~6 Packs</button>
+        <button class="gbtn" onclick="doGuess(this)">~8 Packs</button>
+        <button class="gbtn" onclick="doGuess(this)">10+ Packs</button>
+      </div>`;
+  }
+  /* 5: THE ANSWER */
+  else if (step === 5) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">AVERAGE PACKS NEEDED</div>
+      <div class="counter-box a2">
+        <div class="counter" id="ctr">0.00</div>
+        <div class="counter-label">PACKS ON AVERAGE</div>
+      </div>
+      <div class="compare-bars a3">
+        <div class="cbar-row">
+          <div class="cbar-lbl">Set Size</div>
+          <div class="cbar-track"><div class="cbar-fill" style="width:44%;background:#4B64C7;"></div></div>
+          <span style="width:46px;">5</span>
+        </div>
+        <div class="cbar-row">
+          <div class="cbar-lbl">Avg Packs</div>
+          <div class="cbar-track"><div class="cbar-fill" style="width:100%;background:var(--yellow);"></div></div>
+          <span class="hl" style="width:46px;">11.42</span>
+        </div>
+      </div>`;
+    stage.appendChild(div);
+    await wait(300);
+    const el = document.getElementById('ctr');
+    if (el) animCount(el, 0, 11.42, 1700, 2);
+    return;
+  }
+  /* 6: NAME THE PROBLEM */
+  else if (step === 6) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">CLASSIC PROBABILITY</div>
+      <h2 class="heading a2">The <span class="hl">Coupon Collector</span> Problem</h2>
+      <div class="chip-row a3">
+        <div class="chip">Visualized as a <span class="hl">Markov Chain</span></div>
+      </div>`;
+  }
+  /* 7: STATES */
+  else if (step === 7) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">STEP 1 &bull; STATES</div>
+      <h2 class="heading a2"><span class="hl">State</span> = Unique Cards Owned</h2>
+      <div id="markov-wrap" class="a3">${buildMarkov(7, 0)}</div>`;
+  }
+  /* 8: MARKOV PROPERTY */
+  else if (step === 8) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">THE MARKOV PROPERTY</div>
+      <h2 class="heading a2">Only <span class="hl">Now</span> Matters</h2>
+      <div id="markov-wrap" class="a2">${buildMarkov(8, 2)}</div>
+      <div class="mp-visual a3">
+        <div class="mp-box mp-past">Past Duplicates &amp; Order</div>
+        <div style="font-size:22px;color:var(--muted);">✗</div>
+        <div class="mp-box mp-now">Current State Only (2 / 5)</div>
+      </div>`;
+  }
+  /* 9: STATE 0 -> 1 */
+  else if (step === 9) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 0 → 1 <span class="hl-green">Easy Start</span></h2>
+      ${miniDeck(0)}
+      <div id="markov-wrap">${buildMarkov(9, 0)}</div>
+      ${probBar(100, 0)}`;
+  }
+  /* 10: STATE 1 -> 2 */
+  else if (step === 10) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 1 → 2 <span class="hl">First Self-Loop</span></h2>
+      ${miniDeck(1)}
+      <div id="markov-wrap">${buildMarkov(10, 1)}</div>
+      ${probBar(80, 20)}`;
+  }
+  /* 11: STATE 3 -> 4 */
+  else if (step === 11) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 3 → 4 <span class="hl-orange">Odds Flip</span></h2>
+      ${miniDeck(3)}
+      <div id="markov-wrap">${buildMarkov(11, 3)}</div>
+      ${probBar(40, 60)}`;
+  }
+  /* 12: STATE 4 -> 5 */
+  else if (step === 12) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 4 → 5 <span class="hl-red">The Trap</span></h2>
+      ${miniDeck(4)}
+      <div id="markov-wrap">${buildMarkov(12, 4)}</div>
+      ${probBar(20, 80)}`;
+  }
+  /* 13: COMPLETE PICTURE */
+  else if (step === 13) {
+    div.innerHTML = `
+      <h2 class="heading a1">The <span class="hl">Complete</span> Markov Chain</h2>
+      <div id="markov-wrap" class="a2">${buildMarkov(13, 5)}</div>
+      <div class="chip-row a3">
+        <div class="chip"><span class="hl-green">Fast Start</span></div>
+        <div style="font-size:20px;color:var(--muted);align-self:center;">→</div>
+        <div class="chip"><span class="hl-red">Expensive Finish</span></div>
+      </div>`;
+  }
+  /* 14: BRIDGE TO VIDEO 2 */
+  else if (step === 14) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">UP NEXT</div>
+      <h2 class="heading a2">Video 2: <span class="hl">The Exact Math</span></h2>
+      <div class="formula a3">E[Packs] = 5 × (1 + ½ + ⅓ + ¼ + ⅕) = <span style="color:#fff;">11.42</span></div>
+      <div class="v2card a4">
+        <div class="v2-eye">Next in the Series</div>
+        <div class="v2-title">Expected Wait Time &amp; The General Formula</div>
+      </div>`;
+  }
+
+  stage.appendChild(div);
+}
+
+window.doGuess = function(btn) {
+  document.querySelectorAll('.gbtn').forEach(b => {
+    b.classList.remove('wrong', 'chosen');
+    b.classList.add(b === btn ? 'chosen' : 'wrong');
+  });
+};
+
+nextBtn.addEventListener('click', () => { if (step < TOTAL - 1) go(step + 1); });
+prevBtn.addEventListener('click', () => { if (step > 0) go(step - 1); });
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') && step < TOTAL - 1) {
+    e.preventDefault(); go(step + 1);
+  } else if (e.key === 'ArrowLeft' && step > 0) {
+    e.preventDefault(); go(step - 1);
+  } else if (e.key.toLowerCase() === 'h') {
+    document.body.classList.toggle('hide-ui');
+  }
+});
+
+go(0);
+</script>
+</body>
+</html>
