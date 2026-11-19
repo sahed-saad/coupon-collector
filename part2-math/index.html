@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coupon Collector — Part 2: The Math</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:    #050612;
+  --surf:   #0E1026;
+  --yellow: #FFE135;
+  --blue:   #4B64C7;
+  --text:   #EEF0FA;
+  --muted:  #7B849E;
+  --g0: #22C55E;
+  --g1: #4ADE80;
+  --g2: #A3E635;
+  --g3: #FB923C;
+  --g4: #EF4444;
+  --rad: 14px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; width: 100%; overflow: hidden; }
+
+body {
+  background: radial-gradient(ellipse 80% 60% at 50% 25%, #12173A 0%, var(--ink) 70%);
+  color: var(--text);
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+/* ── STARFIELD ── */
+#bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .55;
+}
+
+/* ── APP SHELL ── */
+#app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+}
+
+#stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vh, 22px) clamp(16px, 3vw, 36px);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── BOTTOM NAV ── */
+#nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 24px 12px;
+  background: rgba(5,6,18,.72);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(255,225,53,.12);
+  flex-shrink: 0;
+  transition: opacity .25s ease, transform .25s ease;
+}
+body.hide-ui #nav {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(100%);
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+}
+
+#step-info { min-width: 64px; }
+#step-info strong { font-size: 15px; color: var(--yellow); font-weight: 900; }
+#step-info span   { font-size: 12px; color: var(--muted); }
+
+#track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+#fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), var(--yellow));
+  border-radius: 999px;
+  transition: width .4s cubic-bezier(.4,0,.2,1);
+  width: 0%;
+}
+
+.nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s, background .15s;
+  flex-shrink: 0;
+}
+#prev {
+  padding: 9px 14px;
+  background: rgba(255,255,255,.07);
+  color: var(--text);
+  font-size: 13px;
+}
+#prev:hover { background: rgba(255,255,255,.14); }
+#prev:disabled { opacity: .28; cursor: default; }
+
+#next {
+  padding: 9px 22px;
+  background: var(--yellow);
+  color: #050612;
+  font-size: 14px;
+  box-shadow: 0 0 22px rgba(255,225,53,.32);
+}
+#next:hover  { transform: scale(1.05); box-shadow: 0 0 34px rgba(255,225,53,.6); }
+#next:active { transform: scale(.96); }
+
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .04em;
+  display: none;
+}
+@media (min-width: 820px) { .hint { display: inline; } }
+
+/* ── SCENE CONTAINER ── */
+.scene {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2.4vh, 24px);
+  width: 100%;
+  max-width: 1040px;
+  animation: scIn .36s cubic-bezier(.25,.46,.45,.94) both;
+}
+@keyframes scIn  { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes scOut { to   { opacity:0; transform:translateY(-8px); } }
+.exit { animation: scOut .2s ease forwards; }
+
+/* ── TYPOGRAPHY ── */
+.pixel {
+  font-family: 'Press Start 2P', monospace;
+  line-height: 1.7;
+  text-align: center;
+}
+.heading {
+  font-size: clamp(22px, 3.4vw, 38px);
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.18;
+}
+.hl        { color: var(--yellow); }
+.hl-green  { color: var(--g0); }
+.hl-lime   { color: var(--g2); }
+.hl-orange { color: var(--g3); }
+.hl-red    { color: var(--g4); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 15px;
+  border-radius: 999px;
+  font-size: clamp(10px, 1.2vw, 12px);
+  font-weight: 900;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.pill-blue   { background: rgba(75,100,199,.22); border: 1px solid rgba(75,100,199,.6); color: #A8BCFF; }
+.pill-yellow { background: rgba(255,225,53,.12); border: 1px solid rgba(255,225,53,.45); color: var(--yellow); }
+.pill-green  { background: rgba(34,197,94,.14);  border: 1px solid rgba(34,197,94,.5);  color: #86EFAC; }
+
+/* ── MATH CARDS & FRACTIONS ── */
+.math-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 2.5vw, 28px);
+  flex-wrap: wrap;
+}
+.math-card {
+  background: rgba(14,16,38,.88);
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  padding: clamp(12px, 2vh, 20px) clamp(18px, 2.5vw, 28px);
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0,0,0,.35);
+}
+.math-card.glow-yellow {
+  border-color: rgba(255,225,53,.55);
+  background: rgba(255,225,53,.07);
+  box-shadow: 0 0 30px rgba(255,225,53,.18);
+}
+.math-card.glow-green {
+  border-color: rgba(34,197,94,.55);
+  background: rgba(34,197,94,.07);
+}
+.mc-label {
+  font-size: 11px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+.mc-val {
+  font-size: clamp(22px, 3vw, 34px);
+  font-weight: 900;
+}
+
+/* Stacked Fraction */
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.frac .num { padding: 0 6px 4px; border-bottom: 2.5px solid currentColor; }
+.frac .den { padding: 4px 6px 0; }
+
+/* ── DIE VISUAL (STEP 3) ── */
+.die-box {
+  width: clamp(72px, 11vh, 96px);
+  height: clamp(72px, 11vh, 96px);
+  background: linear-gradient(145deg, #FFFFFF, #D8DDF0);
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 14px;
+  gap: 6px;
+  box-shadow: 0 0 36px rgba(255,225,53,.35), 0 14px 30px rgba(0,0,0,.5);
+  animation: dieFloat 2.6s ease-in-out infinite;
+}
+@keyframes dieFloat {
+  0%,100% { transform: translateY(0) rotate(-3deg); }
+  50%     { transform: translateY(-7px) rotate(3deg); }
+}
+.pip {
+  background: #0B0D24;
+  border-radius: 50%;
+  width: 100%; height: 100%;
+}
+
+/* ── MARKOV SVG ── */
+#markov-wrap {
+  width: 100%;
+  max-width: 940px;
+  display: flex;
+  justify-content: center;
+}
+#markov-wrap svg {
+  width: 100%;
+  max-height: 36vh;
+  height: auto;
+  overflow: visible;
+}
+
+/* ── PROPORTIONAL BREAKDOWN BAR (STEP 9) ── */
+.seg-bar-wrap {
+  width: 100%;
+  max-width: 820px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.seg-bar {
+  height: 36px;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  border: 1.5px solid rgba(255,255,255,.15);
+  box-shadow: 0 10px 30px rgba(0,0,0,.45);
+}
+.seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(11px, 1.3vw, 14px);
+  font-weight: 900;
+  color: #050612;
+  border-right: 2px solid rgba(5,6,18,.55);
+  animation: growSeg .8s cubic-bezier(.22,1,.36,1) both;
+  transform-origin: left;
+}
+.seg:last-child { border-right: none; color: #fff; }
+@keyframes growSeg { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.seg-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+/* ── SCALE TABLE / CARDS (STEP 12) ── */
+.scale-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(12px, 2vw, 22px);
+  width: 100%;
+  max-width: 820px;
+}
+.scale-card {
+  background: rgba(14,16,38,.9);
+  border: 1.5px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  padding: clamp(14px, 2.2vh, 22px);
+  text-align: center;
+}
+.scale-card.featured {
+  border-color: var(--yellow);
+  background: rgba(255,225,53,.08);
+  box-shadow: 0 0 32px rgba(255,225,53,.22);
+}
+.sc-cards { font-size: 14px; color: var(--muted); font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.sc-packs {
+  font-family: 'Press Start 2P', monospace;
+  font-size: clamp(20px, 2.8vw, 30px);
+  color: var(--yellow);
+  margin: 12px 0 8px;
+}
+.sc-ratio { font-size: 13px; color: rgba(238,240,250,.72); font-weight: 800; }
+
+/* ── VIDEO 3 HANDOFF CARD ── */
+.v3card {
+  background: linear-gradient(145deg, #101A4D 0%, #070C29 100%);
+  border: 1.5px solid rgba(75,100,199,.65);
+  border-radius: 18px;
+  padding: 20px 34px;
+  text-align: center;
+  box-shadow: 0 0 46px rgba(75,100,199,.25);
+}
+.v3-eye   { font-size: 11px; color: #93A8F4; letter-spacing: .16em; margin-bottom: 6px; font-weight: 900; text-transform: uppercase; }
+.v3-title { font-size: clamp(17px, 2vw, 22px); font-weight: 900; color: var(--text); }
+
+/* ── ANIMATIONS ── */
+@keyframes popIn {
+  from { opacity:0; transform:translateY(14px) scale(.92); }
+  to   { opacity:1; transform:none; }
+}
+.a1{ animation:popIn .38s .04s cubic-bezier(.34,1.56,.64,1) both; }
+.a2{ animation:popIn .38s .14s cubic-bezier(.34,1.56,.64,1) both; }
+.a3{ animation:popIn .38s .24s cubic-bezier(.34,1.56,.64,1) both; }
+.a4{ animation:popIn .38s .34s cubic-bezier(.34,1.56,.64,1) both; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+
+<div id="app">
+  <div id="stage"></div>
+  <div id="nav">
+    <div id="step-info">
+      <strong id="snum">1</strong> <span>/ 14</span>
+    </div>
+    <div id="track"><div id="fill"></div></div>
+    <span class="hint">← → or Space &bull; H hides bar</span>
+    <button id="prev" class="nav-btn">← BACK</button>
+    <button id="next" class="nav-btn">NEXT →</button>
+  </div>
+</div>
+
+<script>
+/* ── STARFIELD ── */
+(function () {
+  const cv = document.getElementById('bg');
+  const cx = cv.getContext('2d');
+  let stars = [];
+  function resize() { cv.width = innerWidth; cv.height = innerHeight; }
+  function init() {
+    stars = Array.from({ length: 180 }, () => ({
+      x: Math.random() * cv.width, y: Math.random() * cv.height,
+      r: Math.random() * 1.4 + .3, a: Math.random() * .6 + .18,
+      ph: Math.random() * Math.PI * 2, sp: Math.random() * .012 + .004
+    }));
+  }
+  function draw() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    stars.forEach(s => {
+      s.ph += s.sp;
+      const a = s.a * (.55 + .45 * Math.sin(s.ph));
+      cx.beginPath(); cx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      cx.fillStyle = `rgba(255,255,255,${a})`; cx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize(); init(); draw();
+  window.addEventListener('resize', () => { resize(); init(); });
+})();
+
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function animCount(el, from, to, ms, dec) {
+  const t0 = performance.now();
+  (function tick(now) {
+    const p = Math.min((now - t0) / ms, 1);
+    const e = 1 - Math.pow(1 - p, 3);
+    el.textContent = (from + (to - from) * e).toFixed(dec);
+    if (p < 1) requestAnimationFrame(tick);
+  })(t0);
+}
+
+/* ── MARKOV CHAIN WITH WAIT TIMES SVG ── */
+const SX = [65, 203, 341, 479, 617, 755];
+const SY = 96;
+const SR = 29;
+const COLORS = ['#22C55E', '#4ADE80', '#A3E635', '#FB923C', '#EF4444'];
+const PROBS  = ['5/5', '4/5', '3/5', '2/5', '1/5'];
+const WAITS  = ['1', '1.25', '1.67', '2.5', '5'];
+
+// revealedCount = how many transitions (0 to 5) show their wait-time badge
+// highlightIdx = which transition arrow is currently active (-1 for none)
+function buildMathChain(revealedCount, highlightIdx = -1) {
+  let content = '';
+
+  // Draw forward arrows & probability labels
+  for (let i = 0; i < 5; i++) {
+    const x1 = SX[i] + SR + 6;
+    const x2 = SX[i + 1] - SR - 6;
+    const mx = (x1 + x2) / 2;
+    const col = COLORS[i];
+    const isHl = i === highlightIdx;
+    const lid = `m2a${i}`;
+
+    content += `
+      <defs><marker id="${lid}" markerWidth="8" markerHeight="7" refX="7" refY="3.5" orient="auto">
+        <polygon points="0,0 8,3.5 0,7" fill="${col}"/>
+      </marker></defs>
+      <line x1="${x1}" y1="${SY}" x2="${x2}" y2="${SY}" stroke="${col}"
+            stroke-width="${isHl ? 4.2 : 2.6}" stroke-linecap="round" marker-end="url(#${lid})"
+            opacity="${highlightIdx === -1 || isHl || i < revealedCount ? 1 : 0.35}"/>
+      <rect x="${mx - 24}" y="${SY - 28}" width="48" height="20" rx="5" fill="rgba(5,6,18,.9)"/>
+      <text x="${mx}" y="${SY - 14}" font-family="Nunito,sans-serif" font-weight="900" font-size="13"
+            fill="${col}" text-anchor="middle">${PROBS[i]}</text>`;
+
+    // Wait-time pill below the transition
+    if (i < revealedCount) {
+      const isNew = i === highlightIdx;
+      const animStyle = isNew ? 'animation:badgePop .45s cubic-bezier(.34,1.56,.64,1) both;' : '';
+      content += `
+        <g style="${animStyle}">
+          <line x1="${mx}" y1="${SY + 10}" x2="${mx}" y2="${SY + 56}" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.65"/>
+          <rect x="${mx - 33}" y="${SY + 56}" width="66" height="28" rx="8"
+                fill="${isNew ? col : 'rgba(14,16,38,.95)'}" stroke="${col}" stroke-width="2"/>
+          <text x="${mx}" y="${SY + 75}" font-family="Nunito,sans-serif" font-weight="900" font-size="13.5"
+                fill="${isNew ? '#050612' : col}" text-anchor="middle">${WAITS[i]}</text>
+        </g>`;
+    }
+  }
+
+  // Draw 6 state circles
+  SX.forEach((x, i) => {
+    const isGoal = i === 5;
+    const isFrom = i === highlightIdx;
+    const isTo   = i === highlightIdx + 1;
+    const sc = (isFrom || isTo) ? '#FFE135' : (isGoal ? '#4ADE80' : 'rgba(255,255,255,.22)');
+    const fill = (isFrom || isTo) ? 'rgba(255,225,53,.13)' : (isGoal ? 'rgba(34,197,94,.12)' : 'rgba(14,16,38,.96)');
+    content += `
+      <circle cx="${x}" cy="${SY}" r="${SR}" fill="${fill}" stroke="${sc}" stroke-width="${(isFrom || isTo || isGoal) ? 3 : 2}"/>
+      <text x="${x}" y="${SY + 1}" font-family="'Press Start 2P',monospace" font-size="15"
+            fill="${(isFrom || isTo) ? '#FFE135' : (isGoal ? '#4ADE80' : 'white')}" text-anchor="middle" dominant-baseline="central">${i}</text>
+      <text x="${x}" y="${SY + SR + 16}" font-family="Nunito,sans-serif" font-size="11" font-weight="800"
+            fill="rgba(238,240,250,.5)" text-anchor="middle">${isGoal ? 'GOAL' : `State ${i}`}</text>`;
+  });
+
+  return `<svg viewBox="0 0 820 192" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      @keyframes badgePop { from { opacity: 0; transform: translateY(-8px) scale(.85); } to { opacity: 1; transform: none; } }
+    </style>
+    ${content}
+  </svg>`;
+}
+
+function stepEquation(stateFrom, stateTo, pNum, pDen, waitVal, colorClass) {
+  return `
+    <div class="math-row a2">
+      <div class="math-card">
+        <div class="mc-label">Chance (p)</div>
+        <div class="mc-val ${colorClass}">
+          <span class="frac"><span class="num">${pNum}</span><span class="den">${pDen}</span></span>
+        </div>
+      </div>
+      <div style="font-size:28px;color:var(--muted);font-weight:900;">→</div>
+      <div class="math-card glow-yellow">
+        <div class="mc-label">Average Wait (1 / p)</div>
+        <div class="mc-val hl">
+          <span class="frac"><span class="num">${pDen}</span><span class="den">${pNum}</span></span>
+          <span style="margin-left:10px;color:#fff;">= ${waitVal} packs</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ── STATE & NAVIGATION ── */
+let step = 0;
+const TOTAL = 14;
+const stage = document.getElementById('stage');
+const fill = document.getElementById('fill');
+const snum = document.getElementById('snum');
+const nextBtn = document.getElementById('next');
+const prevBtn = document.getElementById('prev');
+
+async function go(s) {
+  const old = stage.querySelector('.scene');
+  if (old) { old.classList.add('exit'); await wait(190); }
+  stage.innerHTML = '';
+
+  step = s;
+  snum.textContent = step + 1;
+  fill.style.width = `${((step + 1) / TOTAL) * 100}%`;
+  prevBtn.disabled = step === 0;
+  nextBtn.textContent = step === TOTAL - 1 ? 'DONE ✓' : 'NEXT →';
+
+  const div = document.createElement('div');
+  div.className = 'scene';
+
+  /* 0: TITLE */
+  if (step === 0) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">PART 2 &bull; THE MATH</div>
+      <div class="pixel a2" style="font-size:clamp(14px,2.4vw,24px);color:var(--yellow);text-shadow:0 0 32px rgba(255,225,53,.5);">
+        HOW MANY PACKS DO YOU REALLY NEED?
+      </div>
+      <div class="math-row a3">
+        <div class="math-card"><div class="mc-label">Set Size</div><div class="mc-val">5 Cards</div></div>
+        <div style="font-size:26px;color:var(--muted);">→</div>
+        <div class="math-card glow-yellow"><div class="mc-label">Expected Packs</div><div class="mc-val hl">11.42</div></div>
+      </div>`;
+  }
+  /* 1: GAME PLAN */
+  else if (step === 1) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">THE GAME PLAN</div>
+      <h2 class="heading a2">Find Each Wait &rarr; <span class="hl">Add Them Up</span></h2>
+      <div id="markov-wrap" class="a3">${buildMathChain(0, -1)}</div>`;
+  }
+  /* 2: THE 1/P RULE (DIE EXAMPLE) */
+  else if (step === 2) {
+    div.innerHTML = `
+      <div class="pill pill-green a1">ONE SIMPLE RULE</div>
+      <h2 class="heading a2">Average Tries = <span class="hl">1 &divide; Chance</span></h2>
+      <div class="math-row a3">
+        <div class="die-box" aria-label="6-sided die showing 6">
+          <div class="pip"></div><div></div><div class="pip"></div>
+          <div class="pip"></div><div></div><div class="pip"></div>
+          <div class="pip"></div><div></div><div class="pip"></div>
+        </div>
+        <div class="math-card">
+          <div class="mc-label">Chance to Roll a 6</div>
+          <div class="mc-val"><span class="frac"><span class="num">1</span><span class="den">6</span></span></div>
+        </div>
+        <div style="font-size:28px;color:var(--muted);">→</div>
+        <div class="math-card glow-yellow">
+          <div class="mc-label">Average Rolls Needed</div>
+          <div class="mc-val hl">6 Rolls</div>
+        </div>
+      </div>`;
+  }
+  /* 3: STATE 0 -> 1 */
+  else if (step === 3) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 0 &rarr; 1 <span class="hl-green">(0 Cards Owned)</span></h2>
+      ${stepEquation(0, 1, 5, 5, '1', 'hl-green')}
+      <div id="markov-wrap">${buildMathChain(1, 0)}</div>`;
+  }
+  /* 4: STATE 1 -> 2 */
+  else if (step === 4) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 1 &rarr; 2 <span class="hl-green">(1 Card Owned)</span></h2>
+      ${stepEquation(1, 2, 4, 5, '1.25', 'hl-green')}
+      <div id="markov-wrap">${buildMathChain(2, 1)}</div>`;
+  }
+  /* 5: STATE 2 -> 3 */
+  else if (step === 5) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 2 &rarr; 3 <span class="hl-lime">(2 Cards Owned)</span></h2>
+      ${stepEquation(2, 3, 3, 5, '1.67', 'hl-lime')}
+      <div id="markov-wrap">${buildMathChain(3, 2)}</div>`;
+  }
+  /* 6: STATE 3 -> 4 */
+  else if (step === 6) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 3 &rarr; 4 <span class="hl-orange">(3 Cards Owned)</span></h2>
+      ${stepEquation(3, 4, 2, 5, '2.5', 'hl-orange')}
+      <div id="markov-wrap">${buildMathChain(4, 3)}</div>`;
+  }
+  /* 7: STATE 4 -> 5 */
+  else if (step === 7) {
+    div.innerHTML = `
+      <h2 class="heading a1">State 4 &rarr; 5 <span class="hl-red">(4 Cards Owned)</span></h2>
+      ${stepEquation(4, 5, 1, 5, '5', 'hl-red')}
+      <div id="markov-wrap">${buildMathChain(5, 4)}</div>`;
+  }
+  /* 8: ADDING THEM ALL UP */
+  else if (step === 8) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">TOTAL EXPECTED PACKS</div>
+      <h2 class="heading a2">
+        <span class="hl-green">1</span> + <span class="hl-green">1.25</span> + <span class="hl-lime">1.67</span> + <span class="hl-orange">2.5</span> + <span class="hl-red">5</span> = <span class="hl" id="sumCtr">0.00</span>
+      </h2>
+      <div class="seg-bar-wrap a3">
+        <div class="seg-bar">
+          <div class="seg" style="width:8.75%;background:#22C55E;">1</div>
+          <div class="seg" style="width:10.95%;background:#4ADE80;">1.25</div>
+          <div class="seg" style="width:14.6%;background:#A3E635;">1.67</div>
+          <div class="seg" style="width:21.9%;background:#FB923C;">2.5</div>
+          <div class="seg" style="width:43.8%;background:#EF4444;">5 PACKS (LAST CARD!)</div>
+        </div>
+        <div class="seg-legend">
+          <span>Card #1 (9%)</span>
+          <span>Card #5 Alone = 44% of All Packs!</span>
+        </div>
+      </div>`;
+    stage.appendChild(div);
+    await wait(220);
+    const el = document.getElementById('sumCtr');
+    if (el) animCount(el, 0, 11.42, 1300, 2);
+    return;
+  }
+  /* 9: SPOTTING THE PATTERN FOR N CARDS */
+  else if (step === 9) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">ANY SET SIZE (n CARDS)</div>
+      <h2 class="heading a2">Spot the <span class="hl">Fraction Pattern</span></h2>
+      <div class="math-card glow-yellow a3" style="font-size:clamp(18px,2.4vw,26px);">
+        <div class="mc-label">For any set of n cards</div>
+        <div style="display:flex;align-items:center;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:8px;">
+          <span class="frac"><span class="num">n</span><span class="den">n</span></span>
+          <span>+</span>
+          <span class="frac"><span class="num">n</span><span class="den">n &minus; 1</span></span>
+          <span>+</span>
+          <span class="frac"><span class="num">n</span><span class="den">n &minus; 2</span></span>
+          <span>+ &bull;&bull;&bull; +</span>
+          <span class="frac"><span class="num">n</span><span class="den">2</span></span>
+          <span>+</span>
+          <span class="frac"><span class="num">n</span><span class="den">1</span></span>
+        </div>
+      </div>`;
+  }
+  /* 10: CLEAN GENERAL FORMULA */
+  else if (step === 10) {
+    div.innerHTML = `
+      <div class="pill pill-yellow a1">THE MASTER FORMULA</div>
+      <h2 class="heading a2">Pull Out the <span class="hl">n</span></h2>
+      <div class="math-card glow-yellow a3" style="font-size:clamp(18px,2.6vw,30px);padding:22px 34px;">
+        <div style="display:flex;align-items:center;gap:12px;justify-content:center;flex-wrap:wrap;">
+          <span class="hl">E[Packs]</span>
+          <span>=</span>
+          <span class="hl">n</span>
+          <span>&times; ( 1 +</span>
+          <span class="frac"><span class="num">1</span><span class="den">2</span></span>
+          <span>+</span>
+          <span class="frac"><span class="num">1</span><span class="den">3</span></span>
+          <span>+ &bull;&bull;&bull; +</span>
+          <span class="frac"><span class="num">1</span><span class="den">n</span></span>
+          <span>)</span>
+        </div>
+      </div>`;
+  }
+  /* 11: SCALING UP (5, 10, 100 CARDS) */
+  else if (step === 11) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">BIGGER SETS GET EXPENSIVE</div>
+      <h2 class="heading a2">Plug In <span class="hl">Any Set Size</span></h2>
+      <div class="scale-grid a3">
+        <div class="scale-card">
+          <div class="sc-cards">5 Cards</div>
+          <div class="sc-packs">11.42</div>
+          <div class="sc-ratio">~2.3&times; set size</div>
+        </div>
+        <div class="scale-card">
+          <div class="sc-cards">10 Cards</div>
+          <div class="sc-packs">29.29</div>
+          <div class="sc-ratio">~2.9&times; set size</div>
+        </div>
+        <div class="scale-card featured">
+          <div class="sc-cards hl">100 Cards</div>
+          <div class="sc-packs">518.74</div>
+          <div class="sc-ratio hl">Over 5&times; set size!</div>
+        </div>
+      </div>`;
+  }
+  /* 12: CHECKING TWO WAYS */
+  else if (step === 12) {
+    div.innerHTML = `
+      <div class="pill pill-green a1">NEXT STEP</div>
+      <h2 class="heading a2">Does <span class="hl">Real Life</span> Match Our Math?</h2>
+      <div class="math-row a3">
+        <div class="math-card glow-yellow"><div class="mc-label">Exact Formula</div><div class="mc-val hl">11.42 Packs</div></div>
+        <div style="font-size:28px;color:var(--muted);">vs.</div>
+        <div class="math-card glow-green"><div class="mc-label">Computer Simulation</div><div class="mc-val hl-green">???</div></div>
+      </div>`;
+  }
+  /* 13: BRIDGE TO VIDEO 3 */
+  else if (step === 13) {
+    div.innerHTML = `
+      <div class="pill pill-blue a1">UP NEXT</div>
+      <h2 class="heading a2">Video 3: <span class="hl">Python Simulation</span></h2>
+      <div class="v3card a3">
+        <div class="v3-eye">Next in the Series &bull; Mohammed</div>
+        <div class="v3-title">Opening Thousands of Virtual Packs With Code</div>
+      </div>`;
+  }
+
+  stage.appendChild(div);
+}
+
+nextBtn.addEventListener('click', () => { if (step < TOTAL - 1) go(step + 1); });
+prevBtn.addEventListener('click', () => { if (step > 0) go(step - 1); });
+
+document.addEventListener('keydown', e => {
+  if ((e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') && step < TOTAL - 1) {
+    e.preventDefault(); go(step + 1);
+  } else if (e.key === 'ArrowLeft' && step > 0) {
+    e.preventDefault(); go(step - 1);
+  } else if (e.key.toLowerCase() === 'h') {
+    document.body.classList.toggle('hide-ui');
+  }
+});
+
+go(0);
+</script>
+</body>
+</html>
