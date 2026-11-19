@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Coupon Collector — Part 3: Simulation &amp; Code</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#050612;--surf:#0E1026;--yellow:#FFE135;--blue:#4B64C7;--text:#EEF0FA;--muted:#7B849E;--g0:#22C55E;--g3:#FB923C;--g4:#EF4444}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;width:100%;overflow:hidden}
+body{background:radial-gradient(ellipse 80% 60% at 50% 25%,#12173A 0%,var(--ink) 70%);color:var(--text);font-family:'Nunito',system-ui,sans-serif;font-weight:700;display:flex;flex-direction:column;height:100dvh}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.55}
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100dvh;width:100%;max-width:1160px;margin:0 auto}
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(10px,2vh,22px) clamp(16px,3vw,36px);overflow:hidden}
+#nav{display:flex;align-items:center;gap:14px;padding:10px 24px 12px;background:rgba(5,6,18,.72);backdrop-filter:blur(16px);border-top:1px solid rgba(255,225,53,.12);flex-shrink:0;transition:opacity .25s,transform .25s}
+body.hide-ui #nav{opacity:0;pointer-events:none;transform:translateY(100%);position:fixed;bottom:0;left:0;right:0}
+#step-info{min-width:64px}#step-info strong{font-size:15px;color:var(--yellow);font-weight:900}#step-info span{font-size:12px;color:var(--muted)}
+#track{flex:1;height:4px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden}
+#fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--yellow));border-radius:999px;transition:width .4s;width:0}
+.nav-btn{display:inline-flex;align-items:center;border:none;border-radius:999px;font-family:'Nunito',sans-serif;font-weight:900;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;flex-shrink:0}
+#prev{padding:9px 14px;background:rgba(255,255,255,.07);color:var(--text);font-size:13px}#prev:hover{background:rgba(255,255,255,.14)}#prev:disabled{opacity:.28;cursor:default}
+#next{padding:9px 22px;background:var(--yellow);color:#050612;font-size:14px;box-shadow:0 0 22px rgba(255,225,53,.32)}#next:hover{transform:scale(1.05)}#next:active{transform:scale(.96)}
+.hint{font-size:11px;color:var(--muted);letter-spacing:.04em;display:none}@media(min-width:820px){.hint{display:inline}}
+.scene{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(10px,2.2vh,22px);width:100%;max-width:1020px;animation:scIn .36s cubic-bezier(.25,.46,.45,.94) both}
+@keyframes scIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes scOut{to{opacity:0;transform:translateY(-8px)}}.exit{animation:scOut .2s ease forwards}
+.pixel{font-family:'Press Start 2P',monospace;line-height:1.7;text-align:center}
+.heading{font-size:clamp(22px,3.4vw,38px);font-weight:900;text-align:center;line-height:1.18;letter-spacing:-.01em}
+.sub-short{font-size:clamp(14px,1.8vw,19px);color:rgba(238,240,250,.72);text-align:center;font-weight:800}
+.hl{color:var(--yellow)}.hl-green{color:var(--g0)}.hl-orange{color:var(--g3)}.hl-red{color:var(--g4)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:5px 15px;border-radius:999px;font-size:clamp(10px,1.2vw,12px);font-weight:900;letter-spacing:.1em;text-transform:uppercase}
+.pill-blue{background:rgba(75,100,199,.22);border:1px solid rgba(75,100,199,.6);color:#A8BCFF}
+.pill-yellow{background:rgba(255,225,53,.12);border:1px solid rgba(255,225,53,.45);color:var(--yellow)}
+.pill-green{background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.5);color:#86EFAC}
+.chip-row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+.chip{background:rgba(14,16,38,.85);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px 18px;font-size:clamp(13px,1.5vw,16px);font-weight:900;display:flex;align-items:center;gap:8px}
+.counter{font-family:'Press Start 2P',monospace;font-size:clamp(40px,min(9vw,12vh),84px);color:var(--yellow);text-shadow:0 0 52px rgba(255,225,53,.65);line-height:1.05;text-align:center}
+.counter-label{font-size:12px;color:var(--muted);letter-spacing:.2em;margin-top:8px;font-weight:900;text-transform:uppercase;text-align:center}
+.formula{background:rgba(255,225,53,.09);border:1.5px solid rgba(255,225,53,.35);border-radius:14px;padding:14px 28px;font-size:clamp(15px,2.2vw,22px);font-weight:900;color:var(--yellow);text-align:center}
+.v2card{background:linear-gradient(145deg,#101A4D,#070C29);border:1.5px solid rgba(75,100,199,.65);border-radius:18px;padding:18px 28px;text-align:center;box-shadow:0 0 46px rgba(75,100,199,.25);flex:1;min-width:180px}
+.v2-eye{font-size:11px;color:#93A8F4;letter-spacing:.16em;margin-bottom:6px;font-weight:900;text-transform:uppercase}
+.v2-title{font-size:clamp(15px,1.8vw,20px);font-weight:900}
+.gbtn{padding:12px 28px;border-radius:999px;border:2px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05);color:var(--text);font-family:'Nunito',sans-serif;font-weight:900;font-size:16px;cursor:pointer;transition:.2s}
+.gbtn:hover{border-color:var(--yellow);background:rgba(255,225,53,.14);transform:scale(1.06)}
+/* pokemon cards */
+.card-row{display:flex;gap:clamp(8px,1.5vw,18px);justify-content:center;flex-wrap:nowrap}
+.cw{width:clamp(92px,min(14vw,24vh),156px);aspect-ratio:5/7;perspective:900px;flex-shrink:0}
+.ci{width:100%;height:100%;position:relative;transform-style:preserve-3d;transition:transform .65s cubic-bezier(.4,0,.2,1)}
+.cw.bob .ci{animation:bob 3.2s ease-in-out infinite}
+.cw.bob:nth-child(2) .ci{animation-delay:.4s}.cw.bob:nth-child(3) .ci{animation-delay:.8s}.cw.bob:nth-child(4) .ci{animation-delay:1.2s}.cw.bob:nth-child(5) .ci{animation-delay:1.6s}
+@keyframes bob{0%,100%{transform:translateY(0) rotateY(180deg)}50%{transform:translateY(-9px) rotateY(180deg)}}
+.cw.flipped .ci{transform:rotateY(180deg)}
+.cf,.cb{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.cb{background:linear-gradient(145deg,#1d2154,#090a22);border:2.5px solid var(--blue);display:flex;align-items:center;justify-content:center;box-shadow:0 10px 28px rgba(0,0,0,.45)}
+.cf{transform:rotateY(180deg);display:flex;flex-direction:column;border:2.5px solid transparent;overflow:hidden}
+.cf.electric{background:linear-gradient(155deg,#F7D02C,#D47A00);border-color:#FFE573;box-shadow:0 0 22px rgba(247,208,44,.42)}
+.cf.fire{background:linear-gradient(155deg,#F08030,#B02000);border-color:#FF6030;box-shadow:0 0 22px rgba(240,128,48,.42)}
+.cf.psychic{background:linear-gradient(155deg,#F85888,#780060);border-color:#E040FB;box-shadow:0 0 22px rgba(248,88,136,.42)}
+.cf.ghost{background:linear-gradient(155deg,#705898,#200040);border-color:#9C27B0;box-shadow:0 0 22px rgba(112,88,152,.42)}
+.cf.normal{background:linear-gradient(155deg,#A8A878,#4A4A30);border-color:#C8C890;box-shadow:0 0 20px rgba(168,168,120,.32)}
+.c-header{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 8px 2px}
+.c-name{color:rgba(0,0,0,.85);font-size:clamp(9px,1.1vw,12px);font-weight:900}
+.c-hp{color:rgba(0,0,0,.72);font-size:8px;text-align:right;line-height:1}.c-hp span{font-size:clamp(11px,1.3vw,15px);font-weight:900;display:block}
+.c-art{flex:1;margin:2px 6px;background:rgba(255,255,255,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.c-art img{max-width:86%;max-height:86%;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))}
+.c-foot{padding:3px 6px 6px;font-size:clamp(8px,.9vw,10px);font-weight:900;color:rgba(0,0,0,.62);text-align:center}
+/* deck + pull log */
+.mini-deck{display:flex;gap:12px;background:rgba(14,16,38,.75);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:10px 16px}
+.mini-slot{width:clamp(48px,9vh,76px);height:clamp(48px,9vh,76px);border-radius:10px;display:flex;align-items:center;justify-content:center;border:2px dashed rgba(255,255,255,.22);color:var(--muted);font-size:20px;transition:.25s}
+.mini-slot.owned{background:rgba(34,197,94,.16);border:2px solid var(--g0);box-shadow:0 0 12px rgba(34,197,94,.28)}
+.mini-slot.pulse{animation:pulse .5s}@keyframes pulse{50%{transform:scale(1.18);border-color:var(--g3)}}
+.mini-slot img{width:84%;height:84%;object-fit:contain}
+.log{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;min-height:34px;max-width:760px}
+.lg{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;animation:popIn .3s both;border:1.5px solid}
+.lg img{width:86%;height:86%;object-fit:contain}.lg.n{border-color:var(--g0);background:rgba(34,197,94,.14)}.lg.d{border-color:var(--g3);background:rgba(251,146,60,.12);opacity:.75}
+/* code */
+.code{width:100%;max-width:700px;background:rgba(5,6,18,.92);border:1.5px solid rgba(75,100,199,.55);border-radius:16px;padding:16px 22px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:clamp(11.5px,1.55vw,16px);line-height:1.65;font-weight:700;box-shadow:0 0 40px rgba(75,100,199,.18);white-space:pre;overflow:hidden}
+.code .ln{display:block;opacity:0;animation:popIn .35s forwards}
+.kw{color:#A8BCFF}.fn{color:var(--yellow)}.cm{color:var(--muted)}.nm{color:#86EFAC}
+.ln.hot{background:rgba(255,225,53,.1);border-radius:6px;margin:0 -8px;padding:0 8px}
+/* histogram */
+.hist{display:flex;align-items:flex-end;gap:4px;height:clamp(110px,30vh,250px);width:100%;max-width:760px;border-bottom:2px solid rgba(255,255,255,.18);padding:0 4px}
+.hcol{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;position:relative}
+.hb{background:linear-gradient(180deg,var(--yellow),#E8A200);border-radius:4px 4px 0 0;height:0;transition:height .1s}
+.hl-x{display:flex;gap:4px;width:100%;max-width:760px;padding:0 4px;font-size:10px;color:var(--muted);font-weight:900}.hl-x span{flex:1;text-align:center}
+/* rows */
+.rows{width:100%;max-width:700px;display:flex;flex-direction:column;gap:12px}
+.cbar-row{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:900}
+.cbar-lbl{width:110px;text-align:right;color:var(--muted)}
+.cbar-track{flex:1;height:20px;background:rgba(255,255,255,.06);border-radius:999px;position:relative;overflow:hidden}
+.cbar-fill{height:100%;border-radius:999px;animation:grow 1s .3s cubic-bezier(.22,1,.36,1) both;transform-origin:left}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.ref{position:absolute;top:-2px;bottom:-2px;width:3px;background:#fff;box-shadow:0 0 10px #fff;z-index:2}
+.stats{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.stat{background:rgba(14,16,38,.85);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px 22px;text-align:center;min-width:150px}
+.stat b{display:block;font-family:'Press Start 2P',monospace;font-size:clamp(20px,3vw,32px);color:var(--yellow);margin-bottom:10px;font-weight:400}
+.stat span{font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;font-weight:900}
+table{border-collapse:collapse;width:100%;max-width:640px;font-size:clamp(14px,1.8vw,18px);font-weight:900}
+th{color:var(--muted);font-size:12px;letter-spacing:.12em;text-transform:uppercase;padding:8px 14px;text-align:center}
+td{padding:11px 14px;text-align:center;border-top:1px solid rgba(255,255,255,.08)}
+@keyframes popIn{from{opacity:0;transform:translateY(14px) scale(.92)}to{opacity:1;transform:none}}
+.stagger>*{opacity:0;animation:popIn .4s cubic-bezier(.34,1.56,.64,1) forwards}
+.stagger>*:nth-child(1){animation-delay:.05s}.stagger>*:nth-child(2){animation-delay:.18s}.stagger>*:nth-child(3){animation-delay:.31s}.stagger>*:nth-child(4){animation-delay:.44s}
+.a1{animation:popIn .38s .04s both}.a2{animation:popIn .38s .14s both}.a3{animation:popIn .38s .24s both}.a4{animation:popIn .38s .34s both}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div id="app">
+  <div id="stage"></div>
+  <div id="nav">
+    <div id="step-info"><strong id="snum">1</strong> <span>/ 10</span></div>
+    <div id="track"><div id="fill"></div></div>
+    <span class="hint">← → or Space &bull; H hides bar</span>
+    <button id="prev" class="nav-btn">← BACK</button>
+    <button id="next" class="nav-btn">NEXT →</button>
+  </div>
+</div>
+
+<script>
+/* ── STARFIELD ── */
+(function(){const cv=document.getElementById('bg'),cx=cv.getContext('2d');let st=[];
+function rs(){cv.width=innerWidth;cv.height=innerHeight}
+function init(){st=Array.from({length:180},()=>({x:Math.random()*cv.width,y:Math.random()*cv.height,r:Math.random()*1.4+.3,a:Math.random()*.6+.18,ph:Math.random()*6.28,sp:Math.random()*.012+.004}))}
+function draw(){cx.clearRect(0,0,cv.width,cv.height);st.forEach(s=>{s.ph+=s.sp;cx.beginPath();cx.arc(s.x,s.y,s.r,0,6.28);cx.fillStyle=`rgba(255,255,255,${s.a*(.55+.45*Math.sin(s.ph))})`;cx.fill()});requestAnimationFrame(draw)}
+rs();init();draw();addEventListener('resize',()=>{rs();init()})})();
+
+/* ── DATA & SIMULATION ── */
+const CARDS=[
+ {n:'Pikachu',type:'electric',label:'Lightning',hp:60,pid:25,icon:'⚡'},
+ {n:'Charizard',type:'fire',label:'Fire',hp:150,pid:6,icon:'🔥'},
+ {n:'Mewtwo',type:'psychic',label:'Psychic',hp:120,pid:150,icon:'✨'},
+ {n:'Gengar',type:'ghost',label:'Ghost',hp:90,pid:94,icon:'👻'},
+ {n:'Snorlax',type:'normal',label:'Normal',hp:160,pid:143,icon:'😴'}];
+const pokeball=s=>`<svg viewBox="0 0 48 48" width="${s}" height="${s}" fill="none"><circle cx="24" cy="24" r="22" stroke="#FFCB05" stroke-width="2.2"/><line x1="2" y1="24" x2="46" y2="24" stroke="#FFCB05" stroke-width="2.2"/><path d="M24 2A22 22 0 0 1 46 24L30 24A6 6 0 0 0 18 24L2 24A22 22 0 0 1 24 2Z" fill="rgba(220,0,0,.38)"/><circle cx="24" cy="24" r="6" stroke="#FFCB05" stroke-width="2.2" fill="rgba(5,6,18,.9)"/><circle cx="24" cy="24" r="2.5" fill="#FFCB05"/></svg>`;
+const mkCard=(c,flipped,bob)=>`<div class="cw${flipped?' flipped':''}${bob?' bob':''}"><div class="ci"><div class="cb">${pokeball(46)}</div><div class="cf ${c.type}"><div class="c-header"><span class="c-name">${c.n}</span><span class="c-hp"><span>${c.hp}</span>HP</span></div><div class="c-art"><img src="${ART}${c.pid}.png" alt="${c.n}"></div><div class="c-foot">${c.icon} ${c.label}</div></div></div></div>`;
+const ART='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/';
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const frame=()=>new Promise(r=>requestAnimationFrame(r));
+const H=n=>{let h=0;for(let i=1;i<=n;i++)h+=1/i;return h};
+function sim(n=5){const s=new Set();let c=0;while(s.size<n){s.add(Math.floor(Math.random()*n));c++}return c}
+const avgOf=(N,n=5)=>{let t=0;for(let i=0;i<N;i++)t+=sim(n);return t/N};
+const img=i=>`<img src="${ART}${CARDS[i].pid}.png" alt="${CARDS[i].n}">`;
+let step=0,runId=0;const TOTAL=10;
+const stage=document.getElementById('stage'),fill=document.getElementById('fill'),snum=document.getElementById('snum'),nextBtn=document.getElementById('next'),prevBtn=document.getElementById('prev');
+
+/* ── LIVE: ONE COLLECTOR ── */
+async function runOne(){
+  const id=++runId,owned=new Set();let packs=0;
+  const slots=[...document.querySelectorAll('.mini-slot')],log=document.getElementById('log'),c=document.getElementById('c2'),msg=document.getElementById('msg');
+  slots.forEach(s=>{s.className='mini-slot';s.innerHTML='?'});log.innerHTML='';msg.style.visibility='hidden';c.textContent=0;
+  while(owned.size<5){
+    await wait(480);if(id!==runId)return;
+    const k=Math.floor(Math.random()*5),isNew=!owned.has(k);owned.add(k);packs++;c.textContent=packs;
+    log.insertAdjacentHTML('beforeend',`<div class="lg ${isNew?'n':'d'}">${img(k)}</div>`);
+    if(isNew){slots[k].className='mini-slot owned pulse';slots[k].innerHTML=img(k)}
+  }
+  msg.innerHTML=`Finished in <span class="hl">${packs} packs</span> &bull; one run, not the average`;msg.style.visibility='visible';
+}
+
+/* ── LIVE: HISTOGRAM ── */
+async function runHist(){
+  const id=++runId,bins=new Array(21).fill(0),cols=[...document.querySelectorAll('.hb')],T=3000;let n=0,tot=0;
+  const tc=document.getElementById('c5'),av=document.getElementById('a5'),msg=document.getElementById('msg5');
+  while(n<T){
+    await frame();if(id!==runId)return;
+    for(let i=0;i<30;i++){const c=sim();tot+=c;n++;bins[Math.min(Math.max(c-5,0),20)]++}
+    const mx=Math.max(...bins);cols.forEach((b,i)=>b.style.height=(bins[i]/mx*100)+'%');
+    tc.textContent=n.toLocaleString();av.textContent=(tot/n).toFixed(2);
+  }
+  msg.style.visibility='visible';
+}
+
+/* ── CODE LINES ── */
+const CODE=[
+ '<span class="kw">import</span> random','',
+ '<span class="kw">def</span> <span class="fn">collect</span>(n=<span class="nm">5</span>):',
+ '    owned = <span class="fn">set</span>()          <span class="cm"># cards we have</span>',
+ '    packs = <span class="nm">0</span>',
+ '    <span class="kw">while</span> <span class="fn">len</span>(owned) &lt; n:    <span class="cm"># until set complete</span>',
+ '        owned.add(random.randint(<span class="nm">1</span>, n))',
+ '        packs += <span class="nm">1</span>',
+ '    <span class="kw">return</span> packs','',
+ 'trials = [collect() <span class="kw">for</span> _ <span class="kw">in</span> <span class="fn">range</span>(<span class="nm">100_000</span>)]',
+ '<span class="fn">print</span>(<span class="fn">sum</span>(trials) / <span class="fn">len</span>(trials))   <span class="cm"># ≈ 11.42</span>'];
+
+/* ── NAVIGATION ── */
+async function go(s){
+  runId++;
+  const old=stage.querySelector('.scene');if(old){old.classList.add('exit');await wait(190)}
+  stage.innerHTML='';step=s;snum.textContent=s+1;fill.style.width=`${(s+1)/TOTAL*100}%`;
+  prevBtn.disabled=s===0;nextBtn.textContent=s===TOTAL-1?'DONE ✓':'NEXT →';
+  const d=document.createElement('div');d.className='scene';let after=null;
+
+  if(s===0){d.innerHTML=`
+    <div class="pill pill-blue a1">PART 3 &bull; SIMULATION &amp; CODE</div>
+    <div class="pixel a2" style="font-size:clamp(16px,2.8vw,30px);color:var(--yellow);text-shadow:0 0 32px rgba(255,225,53,.5);">LET’S TEST IT</div>
+    <div class="card-row stagger">${CARDS.map(c=>mkCard(c,true,true)).join('')}</div>
+    <div class="chip-row a4"><div class="chip">🎲 Simulate</div><div class="chip">💻 Code it</div><div class="chip">📈 Verify <span class="hl">11.42</span></div></div>`}
+
+  else if(s===1){d.innerHTML=`
+    <div class="pill pill-yellow a1">THE QUESTION</div>
+    <h2 class="heading a2">Is <span class="hl">11.42</span> packs really right?</h2>
+    <div class="card-row stagger">${CARDS.map(c=>mkCard(c,true,true)).join('')}</div>
+    <div class="chip-row stagger"><div class="chip">Open packs</div><div class="chip">Count them</div><div class="chip">Repeat <span class="hl">thousands</span> of times</div></div>`}
+
+  else if(s===2){d.innerHTML=`
+    <div class="pill pill-green a1">LIVE RUN #1</div>
+    <h2 class="heading a1">One Collector, <span class="hl">One Run</span></h2>
+    <div class="mini-deck">${CARDS.map(()=>`<div class="mini-slot">?</div>`).join('')}</div>
+    <div><div class="counter" id="c2">0</div><div class="counter-label">PACKS OPENED</div></div>
+    <div class="log" id="log"></div>
+    <div class="sub-short" id="msg" style="visibility:hidden">&nbsp;</div>
+    <button class="gbtn" onclick="runOne()">↻ RUN AGAIN</button>`;after=runOne}
+
+  else if(s===3){d.innerHTML=`
+    <div class="pill pill-blue a1">THE ALGORITHM</div>
+    <h2 class="heading a2">4 Steps. <span class="hl">That’s It.</span></h2>
+    <div class="rows stagger" style="gap:10px">
+      <div class="chip"><span class="hl">1</span> Start with an empty set of cards</div>
+      <div class="chip"><span class="hl">2</span> Open a pack → random card from 1 to 5</div>
+      <div class="chip"><span class="hl">3</span> Add it to the set (duplicates change nothing)</div>
+      <div class="chip"><span class="hl">4</span> Repeat until the set has 5 &rarr; <span class="hl-green">return the pack count</span></div>
+    </div>`}
+
+  else if(s===4){d.innerHTML=`
+    <div class="pill pill-yellow a1">THE CODE &bull; PYTHON</div>
+    <div class="code">${CODE.map((l,i)=>`<span class="ln${[3,5,6].includes(i)?' hot':''}" style="animation-delay:${.15+i*.22}s">${l||' '}</span>`).join('')}</div>
+    <div class="chip-row a4" style="animation-delay:2.9s;opacity:0;animation-fill-mode:forwards"><div class="chip"><span class="hl">set</span> = state tracker</div><div class="chip"><span class="hl">while</span> = the Markov chain walk</div></div>`}
+
+  else if(s===5){d.innerHTML=`
+    <div class="pill pill-green a1">LIVE &bull; 3,000 COLLECTORS</div>
+    <div class="chip-row a1" style="gap:36px;align-items:flex-end">
+      <div><div class="counter" id="c5" style="font-size:clamp(26px,5vw,48px)">0</div><div class="counter-label">TRIALS</div></div>
+      <div><div class="counter" id="a5" style="font-size:clamp(26px,5vw,48px)">0.00</div><div class="counter-label">RUNNING AVERAGE</div></div></div>
+    <div class="hist">${Array.from({length:21},()=>`<div class="hcol"><div class="hb"></div></div>`).join('')}</div>
+    <div class="hl-x">${Array.from({length:21},(_,i)=>`<span>${i===20?'25+':i+5}</span>`).join('')}</div>
+    <div class="counter-label">PACKS NEEDED TO COMPLETE THE SET</div>
+    <div class="sub-short" id="msg5" style="visibility:hidden">Peak near <span class="hl">8–10</span>, but a long <span class="hl-red">tail</span> of unlucky collectors</div>`;after=runHist}
+
+  else if(s===6){
+    const L=[10,100,1000,10000,100000],R=L.map(N=>avgOf(N));
+    d.innerHTML=`
+    <div class="pill pill-yellow a1">MORE TRIALS = CLOSER</div>
+    <h2 class="heading a2">Watch It <span class="hl">Converge</span></h2>
+    <div class="rows a3">${L.map((N,i)=>{const e=Math.abs(R[i]-11.4167);return`
+      <div class="cbar-row"><div class="cbar-lbl">${N.toLocaleString()} runs</div>
+        <div class="cbar-track"><div class="ref" style="left:${11.4167/14*100}%"></div><div class="cbar-fill" style="width:${R[i]/14*100}%;background:${e<.15?'var(--g0)':e<.6?'var(--g3)':'var(--g4)'};animation-delay:${.3+i*.2}s"></div></div>
+        <span style="width:60px" class="hl">${R[i].toFixed(2)}</span></div>`}).join('')}</div>
+    <div class="chip-row a4"><div class="chip">White line = math answer <span class="hl">11.42</span></div></div>`}
+
+  else if(s===7){
+    const T=100000,cnt={};let mx=0,tot=0,over=0;const arr=[];
+    for(let i=0;i<T;i++){const c=sim();cnt[c]=(cnt[c]||0)+1;if(c>mx)mx=c;if(c>20)over++;tot+=c}
+    const mn=Math.min(...Object.keys(cnt).map(Number));let a=0,med=0;for(const k of Object.keys(cnt).map(Number).sort((x,y)=>x-y)){a+=cnt[k];if(a>=T/2){med=k;break}}
+    d.innerHTML=`
+    <div class="pill pill-blue a1">100,000 RUNS • THE FULL PICTURE</div>
+    <h2 class="heading a2">Averages Hide the <span class="hl-red">Bad Luck</span></h2>
+    <div class="stats stagger">
+      <div class="stat"><b class="hl-green">${mn}</b><span>Best case</span></div>
+      <div class="stat"><b>${med}</b><span>Median</span></div>
+      <div class="stat"><b>${(tot/T).toFixed(2)}</b><span>Average</span></div>
+      <div class="stat"><b class="hl-red">${mx}</b><span>Worst seen</span></div></div>
+    <div class="chip-row a4"><div class="chip"><span class="hl-orange">${(over/T*100).toFixed(1)}%</span> of collectors needed <span class="hl">20+ packs</span></div></div>`}
+
+  else if(s===8){
+    const NS=[5,10,20,50];
+    d.innerHTML=`
+    <div class="pill pill-yellow a1">CHANGE ONE NUMBER</div>
+    <h2 class="heading a2">Scale the Set <span class="hl">Up</span></h2>
+    <table class="a3"><tr><th>Set size</th><th>Formula n·Hₙ</th><th>Simulation</th></tr>
+    ${NS.map(n=>`<tr><td class="hl">n = ${n}</td><td>${(n*H(n)).toFixed(2)}</td><td class="hl-green">${avgOf(3000,n).toFixed(2)}</td></tr>`).join('')}</table>
+    <div class="sub-short a4">Same code, <span class="hl">collect(n)</span> &mdash; the math holds every time.</div>`}
+
+  else if(s===9){d.innerHTML=`
+    <div class="pill pill-green a1">SERIES RECAP</div>
+    <h2 class="heading a2">Three Ways, <span class="hl">One Answer</span></h2>
+    <div class="chip-row stagger" style="width:100%;flex-wrap:nowrap;align-items:stretch">
+      <div class="v2card"><div class="v2-eye">Part 1</div><div class="v2-title">Markov Chain<br><span class="hl">the model</span></div></div>
+      <div class="v2card"><div class="v2-eye">Part 2</div><div class="v2-title">Exact Math<br><span class="hl">5 × H₅ = 11.42</span></div></div>
+      <div class="v2card"><div class="v2-eye">Part 3</div><div class="v2-title">Simulation<br><span class="hl-green">≈ 11.42 ✓</span></div></div></div>
+    <div class="pill pill-blue a4">UP NEXT &bull; PART 4 →</div>`}
+
+  stage.appendChild(d);if(after)after();
+}
+
+nextBtn.onclick=()=>{if(step<TOTAL-1)go(step+1)};
+prevBtn.onclick=()=>{if(step>0)go(step-1)};
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight',' ','Enter'].includes(e.key)&&step<TOTAL-1&&e.target.tagName!=='BUTTON'){e.preventDefault();go(step+1)}
+  else if(e.key==='ArrowLeft'&&step>0){e.preventDefault();go(step-1)}
+  else if(e.key.toLowerCase()==='h')document.body.classList.toggle('hide-ui');
+});
+go(0);
+</script>
+  <script src="/nav.js"></script>
+</body>
+</html>
